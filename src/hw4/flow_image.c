@@ -46,10 +46,28 @@ void draw_line(image im, float x, float y, float dx, float dy)
 // returns: image I such that I[x,y] = sum{i<=x, j<=y}(im[i,j])
 image make_integral_image(image im)
 {
-    image integ = make_image(im.w, im.h, im.c);
-    // TODO: fill in the integral image
+    image integ = copy_image(im);
+
+    for (int i = 0; i < im.c; ++i){
+      for (int j = 1; j < im.h; ++j){
+        integ.data[i*im.h*im.w+j*im.w] += integ.data[i*im.h*im.w+(j-1)*im.w];
+      }
+      for (int k = 1; k < im.w; ++k){
+        integ.data[i*im.h*im.w+k] += integ.data[i*im.h*im.w+k-1];
+      }
+    }
+    for (int i = 0; i < im.c; ++i){
+      for (int j = 1; j < im.h; ++j){
+        for (int k = 1; k < im.w; ++k){
+          int idx = i*im.h*im.w + j*im.w + k;
+          integ.data[idx] += integ.data[idx-1] + integ.data[idx-im.w] - integ.data[idx-im.w-1];
+        }
+      }
+    }
     return integ;
 }
+
+
 
 // Apply a box filter to an image using an integral image for speed
 // image im: image to smooth
@@ -58,9 +76,21 @@ image make_integral_image(image im)
 image box_filter_image(image im, int s)
 {
     int i,j,k;
+    int offset = s / 2;
     image integ = make_integral_image(im);
     image S = make_image(im.w, im.h, im.c);
     // TODO: fill in S using the integral image.
+    for(i = 0; i < im.w; i++) {
+        for(j = 0; j < im.h; j++) {
+            for(k = 0; k < im.c; k++) {
+                float sum = get_pixel(integ, i + offset, j + offset, k) -
+                            get_pixel(integ, i + offset, j - offset - 1, k) -
+                            get_pixel(integ, i - offset - 1, j + offset, k) +
+                            get_pixel(integ, i - offset - 1, j - offset - 1, k);
+                set_pixel(S, i, j, k, sum / (s * s));
+            }
+        }
+    }
     return S;
 }
 
@@ -82,11 +112,32 @@ image time_structure_matrix(image im, image prev, int s)
 
     // TODO: calculate gradients, structure components, and smooth them
 
-    image S;
+    image S = make_image(im.w, im.h, 5);
+    image gx_filter = make_gx_filter();
+    image gy_filter = make_gy_filter();
+    image gx = convolve_image(im, gx_filter, 0);
+    image gy = convolve_image(im, gy_filter, 0);
+    image gt = make_image(im.w, im.h, 1);
+    for (i = 0; i < im.h*im.w; ++i){
+      gt.data[i] = im.data[i] - prev.data[i];
+    }
+    for (i = 0; i < im.h*im.w; ++i){
+      S.data[i] = gx.data[i] * gx.data[i];
+      S.data[i+im.h*im.w] = gy.data[i] * gy.data[i];
+      S.data[i+2*im.h*im.w] = gx.data[i] * gy.data[i];
+      S.data[i+3*im.h*im.w] = gx.data[i] * gt.data[i];
+      S.data[i+4*im.h*im.w] = gy.data[i] * gt.data[i];
+    }
+    S = box_filter_image(S, s);
 
     if(converted){
         free_image(im); free_image(prev);
     }
+    free_image(gx_filter);
+    free_image(gy_filter);
+    free_image(gx);
+    free_image(gy);
+    free_image(gt);
     return S;
 }
 
@@ -107,9 +158,18 @@ image velocity_image(image S, int stride)
             float Iyt = S.data[i + S.w*j + 4*S.w*S.h];
 
             // TODO: calculate vx and vy using the flow equation
-            float vx = 0;
-            float vy = 0;
+             matrix T = make_matrix(2,1);
+            T.data[0][0] = -Ixt;
+            T.data[1][0] = -Iyt;
+            double arr[2][2] = {{Ixx, Ixy}, {Ixy, Iyy}};
+            memcpy(*M.data, arr[0], sizeof(arr[0]));
+            memcpy(*(M.data+1), arr[1], sizeof(arr[1]));
 
+            matrix Minv = matrix_invert(M);
+            if(!Minv.data) continue;
+            matrix V = matrix_mult_matrix(Minv, T);
+            float vx = V.data[0][0];
+            float vy = V.data[1][0];
             set_pixel(v, i/stride, j/stride, 0, vx);
             set_pixel(v, i/stride, j/stride, 1, vy);
         }
