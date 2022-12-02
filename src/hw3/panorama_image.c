@@ -449,11 +449,11 @@ image panorama_image(image a, image b, float sigma, float thresh, int nms, float
 
     if (1)
     {
-        // Mark corners and matches between images
-        // mark_corners(a, ad, an);
-        // mark_corners(b, bd, bn);
-        // image inlier_matches = draw_inliers(a, b, H, m, mn, inlier_thresh);
-        // save_image(inlier_matches, "inliers");
+        Mark corners and matches between images
+        mark_corners(a, ad, an);
+        mark_corners(b, bd, bn);
+        image inlier_matches = draw_inliers(a, b, H, m, mn, inlier_thresh);
+        save_image(inlier_matches, "inliers");
     }
 
     free_descriptors(ad, an);
